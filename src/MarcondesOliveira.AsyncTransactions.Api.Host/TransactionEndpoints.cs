@@ -1,4 +1,5 @@
 using MarcondesOliveira.AsyncTransactions.Api.Application;
+using Microsoft.OpenApi;
 
 namespace MarcondesOliveira.AsyncTransactions.Api;
 
@@ -10,6 +11,16 @@ public static class TransactionEndpoints
         endpoints.MapPost("/transactions", CreateTransactionAsync)
             .WithName("CreateTransaction")
             .WithSummary("Creates a transaction for asynchronous processing")
+            .AddOpenApiOperationTransformer((operation, _, _) =>
+            {
+                AddHeaderParameter(
+                    operation,
+                    "Idempotency-Key",
+                    required: true,
+                    "Unique request key containing 8 to 128 printable ASCII characters without spaces");
+                AddCorrelationHeader(operation);
+                return Task.CompletedTask;
+            })
             .Produces<CreateTransactionResponse>(StatusCodes.Status202Accepted)
             .Produces<ErrorResponse>(StatusCodes.Status400BadRequest)
             .Produces<ErrorResponse>(StatusCodes.Status409Conflict)
@@ -18,6 +29,11 @@ public static class TransactionEndpoints
         endpoints.MapGet("/transactions/{transactionId}", GetTransactionAsync)
             .WithName("GetTransaction")
             .WithSummary("Gets the current transaction state")
+            .AddOpenApiOperationTransformer((operation, _, _) =>
+            {
+                AddCorrelationHeader(operation);
+                return Task.CompletedTask;
+            })
             .Produces<TransactionResponse>()
             .Produces<ErrorResponse>(StatusCodes.Status400BadRequest)
             .Produces<ErrorResponse>(StatusCodes.Status404NotFound)
@@ -106,5 +122,32 @@ public static class TransactionEndpoints
     {
         context.Response.Headers.Location = transaction.Links.Self;
         return Results.Json(transaction, statusCode: StatusCodes.Status202Accepted);
+    }
+
+    private static void AddCorrelationHeader(OpenApiOperation operation) =>
+        AddHeaderParameter(
+            operation,
+            "X-Correlation-Id",
+            required: false,
+            "Optional UUID used to correlate the request across services");
+
+    private static void AddHeaderParameter(
+        OpenApiOperation operation,
+        string name,
+        bool required,
+        string description)
+    {
+        operation.Parameters ??= [];
+        operation.Parameters.Add(new OpenApiParameter
+        {
+            Name = name,
+            In = ParameterLocation.Header,
+            Required = required,
+            Description = description,
+            Schema = new OpenApiSchema
+            {
+                Type = JsonSchemaType.String
+            }
+        });
     }
 }

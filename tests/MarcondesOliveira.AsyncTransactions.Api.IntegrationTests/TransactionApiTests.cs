@@ -184,10 +184,34 @@ public sealed class TransactionApiTests : IClassFixture<TransactionApiFactory>
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var document = JsonDocument.Parse(
             await response.Content.ReadAsStreamAsync(CancellationToken.None));
-        Assert.True(
-            document.RootElement
-                .GetProperty("paths")
-                .TryGetProperty("/transactions", out _));
+        var transactions = document.RootElement
+            .GetProperty("paths")
+            .GetProperty("/transactions");
+        var postParameters = transactions
+            .GetProperty("post")
+            .GetProperty("parameters")
+            .EnumerateArray()
+            .ToArray();
+
+        var idempotencyKey = Assert.Single(
+            postParameters,
+            parameter => parameter.GetProperty("name").GetString() ==
+                "Idempotency-Key");
+        Assert.Equal(
+            "header",
+            idempotencyKey.GetProperty("in").GetString());
+        Assert.True(idempotencyKey.GetProperty("required").GetBoolean());
+
+        var correlationId = Assert.Single(
+            postParameters,
+            parameter => parameter.GetProperty("name").GetString() ==
+                "X-Correlation-Id");
+        Assert.Equal(
+            "header",
+            correlationId.GetProperty("in").GetString());
+        Assert.False(
+            correlationId.TryGetProperty("required", out var required) &&
+            required.GetBoolean());
     }
 
     [Fact]

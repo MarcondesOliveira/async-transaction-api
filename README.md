@@ -132,4 +132,6 @@ Packaging and upload will be added with the CI/CD stage. No application reposito
 
 ## Current scope
 
-The local implementation is complete and tested. AWS provisioning, deployed smoke tests and CI/CD belong to later project stages.
+The API has been deployed and smoke-tested on AWS through API Gateway, Lambda
+and DynamoDB. The asynchronous request pipeline and GitHub Actions CI/CD belong
+to later project stages.

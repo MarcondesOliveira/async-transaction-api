@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>MarcondesOliveira.AsyncTransactions.Api</AssemblyName>
+    <RootNamespace>MarcondesOliveira.AsyncTransactions.Api</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Amazon.Lambda.AspNetCoreServer.Hosting" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Swashbuckle.AspNetCore" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../MarcondesOliveira.AsyncTransactions.Api.Application/MarcondesOliveira.AsyncTransactions.Api.Application.csproj" />
+    <ProjectReference Include="../MarcondesOliveira.AsyncTransactions.Api.Infrastructure/MarcondesOliveira.AsyncTransactions.Api.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

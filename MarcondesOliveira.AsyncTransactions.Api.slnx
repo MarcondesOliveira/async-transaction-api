@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MarcondesOliveira.AsyncTransactions.Api.Application/MarcondesOliveira.AsyncTransactions.Api.Application.csproj" />
+    <Project Path="src/MarcondesOliveira.AsyncTransactions.Api.Host/MarcondesOliveira.AsyncTransactions.Api.Host.csproj" />
+    <Project Path="src/MarcondesOliveira.AsyncTransactions.Api.Infrastructure/MarcondesOliveira.AsyncTransactions.Api.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MarcondesOliveira.AsyncTransactions.Api.ContractTests/MarcondesOliveira.AsyncTransactions.Api.ContractTests.csproj" />
+    <Project Path="tests/MarcondesOliveira.AsyncTransactions.Api.IntegrationTests/MarcondesOliveira.AsyncTransactions.Api.IntegrationTests.csproj" />
+    <Project Path="tests/MarcondesOliveira.AsyncTransactions.Api.UnitTests/MarcondesOliveira.AsyncTransactions.Api.UnitTests.csproj" />
+  </Folder>
+</Solution>

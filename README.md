@@ -69,6 +69,25 @@ dotnet build MarcondesOliveira.AsyncTransactions.Api.slnx --no-restore --configu
 dotnet test MarcondesOliveira.AsyncTransactions.Api.slnx --no-build --configuration Release
 ```
 
+## Continuous integration
+
+The `CI` workflow runs on pull requests targeting `main`, pushes to `main`, and
+manual dispatch. It restores dependencies, verifies formatting, builds Release
+with the configured .NET analyzers/warnings as errors, runs all three test projects,
+and audits direct/transitive NuGet dependencies. The audit fails on reported
+vulnerabilities; its JSON report is printed in the job log for investigation.
+
+Actions are pinned to commit SHAs. The job uses a read-only repository token,
+does not persist checkout credentials, and requests no AWS credentials or OIDC
+token. It neither publishes deployment packages nor changes AWS resources.
+Tests use controlled substitutes, so no manual HTTP test or deployed table is
+required for this CI-only change. A passing workflow is not branch protection;
+required checks must be configured separately if desired.
+
+References: [checkout](https://github.com/actions/checkout),
+[setup-dotnet](https://github.com/actions/setup-dotnet),
+[NuGet audit command](https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-package-list).
+
 ## Operational logs
 
 Application events use the `TransactionApi` logger category with source-generated

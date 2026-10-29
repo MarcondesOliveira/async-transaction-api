@@ -75,6 +75,44 @@ class DeployTests(unittest.TestCase):
                 deploy.main()
             self.assertEqual(api.call_count, 1)
 
+    def test_initial_title_or_missing_metadata_can_settle(self):
+        for field, value in [("display_title", "Deploy service"), ("path", None),
+                             ("repository", None), ("event", None), ("head_branch", None)]:
+            initial = result(None, "queued")
+            initial[field] = value
+            with self.subTest(field=field), patch.object(
+                    deploy, "api", side_effect=[{"workflow_run_id": 123}, initial, result()]) as api, patch.object(deploy.time, "sleep") as sleep:
+                deploy.main()
+                sleep.assert_called_once_with(15)
+                self.assertEqual(api.call_count, 3)
+
+    def test_unsettled_metadata_has_bounded_grace_and_diagnostic(self):
+        initial = result(None, "queued")
+        initial["display_title"] = "Deploy service"
+        with patch.object(deploy, "api", side_effect=[{"workflow_run_id": 123}, initial, initial]) as api, patch.object(deploy.time, "sleep"), patch.object(deploy.time, "monotonic", side_effect=[0, 0, 121]):
+            with self.assertRaisesRegex(RuntimeError, 'display_title.*observed.*Deploy service'):
+                deploy.main()
+            self.assertEqual(api.call_count, 3)
+
+    def test_concrete_wrong_identity_fails_immediately_even_queued(self):
+        for field, value in [("id", 999), ("repository", {"full_name": "other/repo"}),
+                             ("path", "wrong.yml"), ("head_branch", "other"), ("event", "push")]:
+            initial = result(None, "queued")
+            initial[field] = value
+            with self.subTest(field=field), patch.object(
+                    deploy, "api", side_effect=[{"workflow_run_id": 123}, initial]), patch.object(deploy.time, "sleep") as sleep:
+                with self.assertRaisesRegex(RuntimeError, field):
+                    deploy.main()
+                sleep.assert_not_called()
+
+    def test_completed_success_never_bypasses_identity_validation(self):
+        initial = result()
+        initial["display_title"] = "Deploy service"
+        with patch.object(deploy, "api", side_effect=[{"workflow_run_id": 123}, initial]), patch.object(deploy.time, "sleep") as sleep:
+            with self.assertRaisesRegex(RuntimeError, "display_title"):
+                deploy.main()
+            sleep.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

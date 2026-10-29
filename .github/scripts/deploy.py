@@ -11,6 +11,17 @@ REPOSITORY = "MarcondesOliveira/async-transaction-infrastructure"
 SERVICE = "async-transaction-api"
 
 
+def identity_mismatches(run, run_id, commit):
+    expected = {"id": run_id, "event": "workflow_dispatch", "head_branch": "main",
+                "path": ".github/workflows/deploy.yml", "repository": REPOSITORY,
+                "display_title": f"deploy {SERVICE} @ {commit}"}
+    observed = {key: run.get(key) for key in expected}
+    observed["repository"] = (run.get("repository") or {}).get("full_name")
+    observed["path"] = (run.get("path") or "").split("@")[0]
+    return {key: {"expected": value, "observed": observed[key]}
+            for key, value in expected.items() if observed[key] != value}
+
+
 def api(path, payload=None):
     command = ["gh", "api", "-H", "X-GitHub-Api-Version: 2022-11-28", path]
     if payload is not None:
@@ -42,15 +53,23 @@ def main():
     if summary:
         with open(summary, "a", encoding="utf-8") as output:
             output.write(f"\nCentral deployment: [run {run_id}]({url})\nSource commit: `{commit}`\n")
-    deadline = time.monotonic() + 40 * 60
-    while time.monotonic() < deadline:
+    started = time.monotonic()
+    deadline = started + 40 * 60
+    while (now := time.monotonic()) < deadline:
         run = api(f"repos/{REPOSITORY}/actions/runs/{run_id}")
-        if (run.get("id") != run_id or run.get("event") != "workflow_dispatch"
-                or run.get("head_branch") != "main"
-                or run.get("path", "").split("@")[0] != ".github/workflows/deploy.yml"
-                or run.get("repository", {}).get("full_name") != REPOSITORY
-                or run.get("display_title") != f"deploy {SERVICE} @ {commit}"):
-            raise RuntimeError("Central workflow identity does not match the requested deployment")
+        mismatches = identity_mismatches(run, run_id, commit)
+        if mismatches:
+            # Only known early metadata gaps/title evaluation receive a short grace
+            # period. A wrong run ID or concrete repository/ref/workflow is fatal.
+            transient = all(key != "id" and
+                            (key == "display_title" or item["observed"] in (None, ""))
+                            for key, item in mismatches.items())
+            diagnostic = json.dumps(mismatches, ensure_ascii=True)
+            if transient and run.get("status") != "completed" and now < started + 120:
+                print(f"Waiting for central identity metadata: {diagnostic}", flush=True)
+                time.sleep(15)
+                continue
+            raise RuntimeError(f"Central workflow identity mismatch: {diagnostic}; inspect {url}")
         if run.get("status") == "completed":
             if run.get("conclusion") != "success":
                 raise RuntimeError(f"Central deployment did not succeed: {run.get('conclusion')}; inspect {url}")

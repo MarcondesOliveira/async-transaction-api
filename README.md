@@ -131,6 +131,13 @@ Missing/expired tokens, rejected dispatches and unsuccessful central runs fail
 delivery visibly. The dispatch API returns the exact run ID; no latest-run lookup
 is used. See [GitHub workflow dispatch API](https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event).
 
+Immediately after dispatch, missing identity metadata or an unevaluated display
+title may be retried for at most two minutes while the run is not completed.
+The exact run ID is always mandatory; concrete wrong repository, branch, workflow
+or event fails immediately. A completed run must pass every identity check before
+success is accepted. Diagnostics show only the checked metadata fields, not
+tokens or full API payloads. There is no automatic redispatch.
+
 Deliveries queue rather than replace pending jobs. The central workflow serializes
 Terraform changes per stack and preserves other services' deployed packages.
 The wait is bounded to 40 minutes; timeout does not cancel a possibly running
@@ -175,8 +182,12 @@ upload. The run URL is printed and written in the workflow summary.
 After successful delivery, a manual Bruno/Swagger POST `/transactions` followed
 by GET `/transactions/{transactionId}` can confirm the updated live flow; use
 synthetic data and a new `Idempotency-Key`. Expect eventual `SUCCEEDED/APPROVED`.
-The first automatic push-to-deploy execution still needs validation after this
-change is pushed; only the central deploy has already been exercised.
+The first automatic execution successfully published and deployed the exact API
+commit, including a successful central smoke test, but the caller failed during
+its immediate identity check. A later query matched every expected field; the
+initial response was not recorded, so transient metadata is a hypothesis, not a
+proven differing field. Bounded metadata retries and field-level diagnostics are
+now covered by tests; the corrected caller still needs validation after push.
 
 Orchestration safeguards can be tested locally without GitHub or AWS requests:
 `python3 -m unittest discover -s tests/delivery -v`. CI also runs these tests.

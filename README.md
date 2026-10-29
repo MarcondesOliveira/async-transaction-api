@@ -79,10 +79,36 @@ vulnerabilities; its JSON report is printed in the job log for investigation.
 
 Actions are pinned to commit SHAs. The job uses a read-only repository token,
 does not persist checkout credentials, and requests no AWS credentials or OIDC
-token. It neither publishes deployment packages nor changes AWS resources.
+token. The validation job neither publishes deployment packages nor changes AWS resources.
 Tests use controlled substitutes, so no manual HTTP test or deployed table is
 required for this CI-only change. A passing workflow is not branch protection;
 required checks must be configured separately if desired.
+
+### Versioned Lambda artifact
+
+After validation succeeds on `main` (push or manual dispatch), a separate job
+publishes the Host in Release for `linux-arm64`, framework-dependent, without
+ReadyToRun or an apphost. Pull requests do not generate deployment artifacts.
+The job stores the following bundle in GitHub Actions for seven days:
+
+- `async-transaction-api.zip`: Lambda package with assemblies at its root;
+- `async-transaction-api.zip.sha256`: SHA-256 verification file;
+- `build-manifest.json`: full source commit, SDK, runtime, architecture, package
+  hash in hexadecimal/Base64, and the future S3 key `<service>/<commit>/<service>.zip`.
+
+The Actions artifact name includes the commit, run ID and attempt, so reruns do
+not overwrite earlier bundles. This records build identity, not a guarantee of
+byte-for-byte reproducible ZIPs across builds. The Base64 `sourceCodeHash` is for
+the inner Lambda ZIP, not GitHub's outer download archive/digest.
+
+Download the Actions artifact and extract its outer archive before using the
+Lambda ZIP. From that extracted directory, run `sha256sum --check
+async-transaction-api.zip.sha256`. `.github/scripts/package.sh` contains the same
+packaging procedure and refuses to overwrite an existing output directory.
+
+No AWS credentials/OIDC are requested by this job. S3 publication and Lambda
+deployment are separate later steps; a green package job does not change the
+running API. No new manual Bruno/Swagger test is required at this point.
 
 References: [checkout](https://github.com/actions/checkout),
 [setup-dotnet](https://github.com/actions/setup-dotnet),

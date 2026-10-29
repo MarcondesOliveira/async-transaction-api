@@ -69,6 +69,41 @@ dotnet build MarcondesOliveira.AsyncTransactions.Api.slnx --no-restore --configu
 dotnet test MarcondesOliveira.AsyncTransactions.Api.slnx --no-build --configuration Release
 ```
 
+## Operational logs
+
+Application events use the `TransactionApi` logger category with source-generated
+`LoggerMessage` methods and the ASP.NET JSON console formatter:
+
+- `TransactionApiHandled`: POST acceptance, validation failure or idempotency
+  conflict; GET success, invalid UUID or missing transaction. Includes operation,
+  HTTP status and `RequestCorrelationId`. `TransactionId` and `CorrelationId`
+  identify the persisted transaction when available; a missing-transaction GET
+  includes the valid requested transaction UUID without a stored correlation.
+- `TransactionApiFailed`: JSON/binding failures and unexpected exceptions handled
+  by the HTTP error handler. Includes HTTP status, request correlation, exception
+  and root-cause types and stack trace, without exception messages or raw bodies.
+
+On POST replay, `CorrelationId` remains the original transaction's correlation,
+while `RequestCorrelationId` identifies the current HTTP call. A GET similarly
+keeps lookup-request and stored transaction correlations separate. Correlation
+created before persistence is retained for a subsequent exception response/log.
+
+The custom events do not log amounts, accounts, external references or idempotency
+keys. The default exception-handler middleware category is suppressed to avoid
+duplicating exceptions with potentially sensitive messages; the custom failure
+event replaces it. Tests inspect structured log state, not rendered text.
+
+JSON properties are emitted in the ASP.NET console format's `State` object.
+Keep Lambda's runtime log format as `Text` for this function to avoid wrapping
+application JSON again; the SQS handlers use a different native `ILambdaLogger`
+format. These changes require a reviewed package deployment before appearing in AWS.
+
+After deployment, use Bruno or Swagger to POST a new transaction and GET its ID.
+Inspect the transaction-api log group for the handled events and matching
+identifiers, then follow the transaction through the Request and Callback Handler
+groups. A repeated identical POST can verify that a new request correlation does
+not replace the stored transaction correlation.
+
 ## Configuration
 
 | Setting | Default | Purpose |

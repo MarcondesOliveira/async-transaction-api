@@ -9,6 +9,11 @@ using Microsoft.AspNetCore.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Logging.ClearProviders();
+builder.Logging.AddJsonConsole();
+// The custom failure event omits exception messages, which can contain request data.
+builder.Logging.AddFilter("Microsoft.AspNetCore.Diagnostics.ExceptionHandlerMiddleware", LogLevel.None);
+
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
@@ -40,12 +45,13 @@ app.UseExceptionHandler(exceptionHandlerApp =>
 {
     exceptionHandlerApp.Run(async context =>
     {
-        var correlationId = CorrelationId.ResolveOrCreate(context.Request.Headers);
+        var correlationId = TransactionApiLog.GetRequestCorrelation(context);
         var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
         var isBadRequest = exception is BadHttpRequestException or JsonException;
         context.Response.StatusCode = isBadRequest
             ? StatusCodes.Status400BadRequest
             : StatusCodes.Status500InternalServerError;
+        TransactionApiLog.Failed(context, context.Response.StatusCode, correlationId, exception);
         await context.Response.WriteAsJsonAsync(
             new ErrorResponse(
                 isBadRequest ? "VALIDATION_ERROR" : "INTERNAL_ERROR",

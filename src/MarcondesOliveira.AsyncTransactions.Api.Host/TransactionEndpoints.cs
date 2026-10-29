@@ -53,6 +53,7 @@ public static class TransactionEndpoints
                 out var correlationId))
         {
             var generatedCorrelationId = Guid.NewGuid();
+            TransactionApiLog.Handled(context, "Create", StatusCodes.Status400BadRequest, generatedCorrelationId);
             return Results.BadRequest(new ErrorResponse(
                 "VALIDATION_ERROR",
                 "The request contains invalid fields",
@@ -62,11 +63,22 @@ public static class TransactionEndpoints
                     "Header must be a UUID when provided")]));
         }
 
+        TransactionApiLog.SetRequestCorrelation(context, correlationId);
         var outcome = await useCase.ExecuteAsync(
             request,
             context.Request.Headers["Idempotency-Key"].ToString(),
             correlationId,
             cancellationToken);
+
+        var statusCode = outcome.Kind switch
+        {
+            CreateTransactionOutcomeKind.Accepted => StatusCodes.Status202Accepted,
+            CreateTransactionOutcomeKind.ValidationFailed => StatusCodes.Status400BadRequest,
+            CreateTransactionOutcomeKind.IdempotencyConflict => StatusCodes.Status409Conflict,
+            _ => throw new InvalidOperationException("Unsupported transaction outcome")
+        };
+        TransactionApiLog.Handled(context, "Create", statusCode, correlationId,
+            outcome.Transaction?.TransactionId, outcome.Transaction?.CorrelationId);
 
         return outcome.Kind switch
         {
@@ -93,8 +105,10 @@ public static class TransactionEndpoints
         CancellationToken cancellationToken)
     {
         var correlationId = CorrelationId.ResolveOrCreate(context.Request.Headers);
+        TransactionApiLog.SetRequestCorrelation(context, correlationId);
         if (!Guid.TryParse(transactionId, out var parsedTransactionId))
         {
+            TransactionApiLog.Handled(context, "Get", StatusCodes.Status400BadRequest, correlationId);
             return Results.BadRequest(new ErrorResponse(
                 "VALIDATION_ERROR",
                 "The request contains invalid fields",
@@ -107,6 +121,10 @@ public static class TransactionEndpoints
         var transaction = await useCase.ExecuteAsync(
             parsedTransactionId,
             cancellationToken);
+
+        TransactionApiLog.Handled(context, "Get",
+            transaction is null ? StatusCodes.Status404NotFound : StatusCodes.Status200OK,
+            correlationId, parsedTransactionId, transaction?.CorrelationId);
 
         return transaction is null
             ? Results.NotFound(new ErrorResponse(

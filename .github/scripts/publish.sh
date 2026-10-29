@@ -37,7 +37,17 @@ entries="$(unzip -Z1 "$artifact_dir/$package")"
 for required in MarcondesOliveira.AsyncTransactions.Api.dll \
   MarcondesOliveira.AsyncTransactions.Api.deps.json \
   MarcondesOliveira.AsyncTransactions.Api.runtimeconfig.json; do
-  printf '%s\n' "$entries" | rg --fixed-strings --line-regexp --quiet "$required"
+  found=false
+  while IFS= read -r entry; do
+    if [[ "$entry" == "$required" ]]; then
+      found=true
+      break
+    fi
+  done <<< "$entries"
+  if [[ "$found" != true ]]; then
+    echo "Missing required ZIP root entry: $required" >&2
+    exit 1
+  fi
 done
 
 if [[ "$mode" == --verify-only ]]; then

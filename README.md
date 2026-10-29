@@ -107,18 +107,35 @@ async-transaction-api.zip.sha256`. `.github/scripts/package.sh` contains the sam
 packaging procedure and refuses to overwrite an existing output directory.
 
 No AWS credentials/OIDC are requested by this job. S3 publication and Lambda
-deployment are separate later steps; a green package job does not change the
-running API. No new manual Bruno/Swagger test is required at this point.
+deployment run in the downstream `Deliver API` workflow; a green package job
+alone does not change the running API. Manual HTTP checks belong after delivery.
 
 References: [checkout](https://github.com/actions/checkout),
 [setup-dotnet](https://github.com/actions/setup-dotnet),
 [NuGet audit command](https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-package-list).
 
-### Manual S3 publication through OIDC
+### Automated delivery through OIDC
 
-`Publish API artifact` (`.github/workflows/publish.yml`) is dispatch-only and
-restricted to `main`. It publishes an existing successful main CI run's bundle;
-it does not rebuild source, run Terraform or change the Lambda.
+`Deliver API` (`.github/workflows/publish.yml`) runs after a successful `CI`
+triggered by a push to this repository's `main`. PRs, forks, failed/cancelled CI
+and manual CI runs do not automatically deploy. The existing CI bundle is
+verified and published without rebuilding. The workflow then dispatches the
+central Terraform pipeline and waits for its exact run to finish successfully,
+including Lambda package verification and an end-to-end synthetic transaction.
+A successful S3 upload alone is not reported as successful delivery.
+
+`INFRA_WORKFLOW_TOKEN` is a short-lived fine-grained Actions read/write token
+restricted to the infrastructure repository, supplied only to the dispatch/wait
+step. It is not an AWS key and is never stored in source or workflow inputs.
+Missing/expired tokens, rejected dispatches and unsuccessful central runs fail
+delivery visibly. The dispatch API returns the exact run ID; no latest-run lookup
+is used. See [GitHub workflow dispatch API](https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event).
+
+Deliveries queue rather than replace pending jobs. The central workflow serializes
+Terraform changes per stack and preserves other services' deployed packages.
+The wait is bounded to 40 minutes; timeout does not cancel a possibly running
+central deployment. Inspect the linked run before retrying. No automatic rollback
+or duplicate dispatch is performed.
 
 Repository variables hold deployment metadata outside source code:
 `AWS_REGION`, `AWS_ACCOUNT_ID`, `ARTIFACT_BUCKET` and `AWS_ARTIFACT_ROLE_ARN`.
@@ -127,7 +144,8 @@ verified immutable OIDC subject, audience STS and `main` branch. No environment
 name is configured on this job because that would change its subject format.
 
 1. Wait for the chosen `CI` run on `main` to succeed, including packaging.
-2. Open **Actions → Publish API artifact → Run workflow**, select `main`, supply
+2. Normally the push starts delivery automatically. For an explicit manual
+   delivery, open **Actions → Deliver API → Run workflow**, select `main`, supply
    the numeric `ci_run_id` and type `PUBLISH` in `confirmation`.
 3. The job checks the run's workflow path, repository, event, branch and conclusion,
    downloads its exact commit/run/attempt artifact, and verifies the fixed package
@@ -137,7 +155,7 @@ name is configured on this job because that would change its subject format.
    Conditional `If-None-Match: *` writes refuse existing keys. The final ZIP
    checksum, encryption and source-commit metadata are checked against S3.
 
-This job alone receives `id-token: write`; CI jobs remain without AWS credentials.
+The publication job receives `id-token: write`; CI jobs remain without AWS credentials.
 It requests a 15-minute role session, masks deployment identifiers in logs and
 uses actions pinned by SHA. The role remains shared with other application
 repositories: per-repository IAM isolation is not introduced here. Conditional
@@ -150,9 +168,18 @@ with the owner before any retry or cleanup; there is no automatic delete/rollbac
 An expired GitHub artifact cannot be published with this workflow. Do not rebuild
 the same commit and overwrite its existing S3 package to work around either case.
 
-After a successful upload, inspect the workflow and S3 evidence together. A manual
-Bruno/Swagger transaction adds no publication coverage because the running Lambda
-has not changed; end-to-end testing belongs to the later reviewed deploy.
+After publication, the central workflow applies the matching artifact using
+Terraform and verifies the Lambda and synthetic transaction. A central failure,
+cancellation or timeout fails this delivery rather than hiding it behind the S3
+upload. The run URL is printed and written in the workflow summary.
+After successful delivery, a manual Bruno/Swagger POST `/transactions` followed
+by GET `/transactions/{transactionId}` can confirm the updated live flow; use
+synthetic data and a new `Idempotency-Key`. Expect eventual `SUCCEEDED/APPROVED`.
+The first automatic push-to-deploy execution still needs validation after this
+change is pushed; only the central deploy has already been exercised.
+
+Orchestration safeguards can be tested locally without GitHub or AWS requests:
+`python3 -m unittest discover -s tests/delivery -v`. CI also runs these tests.
 
 References: [AWS OIDC action](https://github.com/aws-actions/configure-aws-credentials),
 [S3 conditional writes](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html).

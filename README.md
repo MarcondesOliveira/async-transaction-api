@@ -1,5 +1,13 @@
 # Async Transaction API
 
+[Complete project overview](https://github.com/MarcondesOliveira/async-transaction-infrastructure)
+· [From-zero reproduction guide](https://github.com/MarcondesOliveira/async-transaction-infrastructure/blob/main/docs/reproduce.md)
+
+This README covers the HTTP entry service. Use the central guide for all five
+repositories, initial owner provisioning, GitHub/OIDC configuration and teardown.
+Routine service delivery expects an existing stack; it is not an empty-account
+bootstrap. Use synthetic data only.
+
 Serverless .NET API that creates and queries transactions in the Async Transaction Processing portfolio project.
 
 The API accepts a transaction synchronously, stores it as `PENDING` in DynamoDB and returns `202 Accepted`. Downstream processing is intentionally outside this repository and starts from the DynamoDB Stream.
@@ -80,8 +88,8 @@ vulnerabilities; its JSON report is printed in the job log for investigation.
 Actions are pinned to commit SHAs. The job uses a read-only repository token,
 does not persist checkout credentials, and requests no AWS credentials or OIDC
 token. The validation job neither publishes deployment packages nor changes AWS resources.
-Tests use controlled substitutes, so no manual HTTP test or deployed table is
-required for this CI-only change. A passing workflow is not branch protection;
+Tests use controlled substitutes; no manual HTTP test or deployed table is
+required to run CI. A passing workflow is not branch protection;
 required checks must be configured separately if desired.
 
 ### Versioned Lambda artifact
@@ -117,8 +125,9 @@ References: [checkout](https://github.com/actions/checkout),
 ### Automated delivery through OIDC
 
 `Deliver API` (`.github/workflows/publish.yml`) runs after a successful `CI`
-triggered by a push to this repository's `main`. PRs, forks, failed/cancelled CI
-and manual CI runs do not automatically deploy. The existing CI bundle is
+triggered by a push to this repository's `main`. PR runs, failed/cancelled CI,
+runs from another head repository and manual CI do not automatically deploy.
+The existing CI bundle is
 verified and published without rebuilding. The workflow then dispatches the
 central Terraform pipeline and waits for its exact run to finish successfully,
 including Lambda package verification and an end-to-end synthetic transaction.
@@ -182,12 +191,10 @@ upload. The run URL is printed and written in the workflow summary.
 After successful delivery, a manual Bruno/Swagger POST `/transactions` followed
 by GET `/transactions/{transactionId}` can confirm the updated live flow; use
 synthetic data and a new `Idempotency-Key`. Expect eventual `SUCCEEDED/APPROVED`.
-The first automatic execution successfully published and deployed the exact API
-commit, including a successful central smoke test, but the caller failed during
-its immediate identity check. A later query matched every expected field; the
-initial response was not recorded, so transient metadata is a hypothesis, not a
-proven differing field. Bounded metadata retries and field-level diagnostics are
-now covered by tests; the corrected caller still needs validation after push.
+Automatic main-push delivery has been validated on AWS, including publication,
+the central Terraform deployment, Lambda hash/status, the final synthetic result
+and success propagation to this repository. A real initial display-title delay
+was observed and is handled by the bounded metadata checks described above.
 
 Orchestration safeguards can be tested locally without GitHub or AWS requests:
 `python3 -m unittest discover -s tests/delivery -v`. CI also runs these tests.
@@ -222,7 +229,8 @@ event replaces it. Tests inspect structured log state, not rendered text.
 JSON properties are emitted in the ASP.NET console format's `State` object.
 Keep Lambda's runtime log format as `Text` for this function to avoid wrapping
 application JSON again; the SQS handlers use a different native `ILambdaLogger`
-format. These changes require a reviewed package deployment before appearing in AWS.
+format. The lab's deployed package includes these structured events; later changes
+still require their own package delivery before appearing in AWS.
 
 After deployment, use Bruno or Swagger to POST a new transaction and GET its ID.
 Inspect the transaction-api log group for the handled events and matching
@@ -268,7 +276,8 @@ The first valid request creates a transaction and returns `202`. Repeating the s
 GET /transactions/06f26a61-3ae3-4f80-a4e9-061a3a73ad6d HTTP/1.1
 ```
 
-The endpoint returns the current transaction state or `404` when it does not exist.
+Replace the example UUID with the ID returned by your POST. The endpoint returns
+the current transaction state or `404` when it does not exist.
 
 See [docs/api-contract.md](docs/api-contract.md) for validation and response details.
 
@@ -279,7 +288,15 @@ Creation uses `TransactWriteItems` to atomically insert:
 - `TRANSACTION#{transactionId}` — the transaction with status `PENDING`;
 - `IDEMPOTENCY#{idempotencyKey}` — the request hash and transaction reference.
 
-Both items use `PK` and `SK`. The idempotency item expires after 24 hours through DynamoDB TTL. The table and all permissions are owned by the infrastructure repository.
+Both items use `PK` and `SK`. The idempotency item receives an `expiresAt`
+timestamp at creation +24 hours; the transaction itself has no TTL. DynamoDB
+physical deletion is asynchronous, and the repository still recognizes an
+idempotency item while it remains present. This is not an exact 24-hour cleanup
+or key-reuse guarantee. Atomic creation prevents a lost HTTP response from turning
+a client retry into a second transaction. Temporary deduplication bookkeeping
+is kept separate from the retained business result; see the
+[project decision](https://github.com/MarcondesOliveira/async-transaction-infrastructure#why-one-post-creates-two-dynamodb-records).
+Terraform owns the table and permissions; this service does not provision them.
 
 ## Lambda packaging
 
@@ -289,10 +306,13 @@ The deployment artifact is a framework-dependent ZIP for the managed `dotnet10` 
 MarcondesOliveira.AsyncTransactions.Api
 ```
 
-Packaging and upload will be added with the CI/CD stage. No application repository creates AWS resources.
+CI packages the assembly and `Deliver API` publishes/deploys it through the
+central Terraform workflow. This repository does not provision AWS resources.
 
 ## Current scope
 
-The API has been deployed and smoke-tested on AWS through API Gateway, Lambda
-and DynamoDB. The asynchronous request pipeline and GitHub Actions CI/CD belong
-to later project stages.
+The API and complete asynchronous request/callback flow have been deployed and
+validated on AWS. Automatic code delivery, central Terraform deployment and
+manual POST/GET verification have passed. The endpoint remains public without
+caller authentication; this is a temporary lab, not a production payment API.
+See the [project limits](https://github.com/MarcondesOliveira/async-transaction-infrastructure#limits-costs-and-teardown).

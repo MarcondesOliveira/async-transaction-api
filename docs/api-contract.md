@@ -63,4 +63,7 @@ Responses:
 }
 ```
 
-The complete cross-service contract remains in the project-level `CONTRACTS.md` until the portfolio documentation is consolidated.
+See the [cross-service contracts and state transitions](https://github.com/MarcondesOliveira/async-transaction-infrastructure/blob/main/docs/contracts.md)
+for the request event, simulator submission, callback event, retry rules and
+retention boundaries. The API stores `externalReference`, but the current Pipe
+does not propagate it to the processor.
